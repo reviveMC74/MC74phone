@@ -1,0 +1,146 @@
+// HTMLact -- Standalone Activity for HTML, builds on htmlActanel functions, but doesn't
+// inherit layout from MainActivity.
+// Used for HTML based Activities that are visually standalone (from MC74) such
+// as an HTML/Javascript based Launcher
+// as defined in MC74.mp:
+//  launcher: 
+//      act: 'ribo.phone.HTMLact'
+//      img: 'launch.png'
+//      url: 'http://localhost:1808/launch'
+
+package ribo.phone;
+
+import android.app.*;
+import android.content.*;
+import android.os.*;
+import android.view.*;
+import android.webkit.*;
+import android.widget.*;
+import com.ibm.ssm.*;
+import com.ibm.ssm.tree.*;
+import static org.andr.RAUtil.*;
+import static ribo.phone.Info.*;
+
+public class HTMLact extends Activity {
+  public static HTMLact htmlAct;
+  public String ctxPath;
+  public String layoutOid;  // Overrides ctxPath if specified
+  public Tree wpCtxTr;
+  public static WebView webVw;
+  public static WebSettings ws;
+  public static WebViewClient wvc;
+  public static WebChromeClient wcc;
+
+    
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        prt("HTMLact.onCreate");
+        getIntent().putExtra("Activity", "HTMLact");
+        super.onCreate(savedInstanceState);
+        htmlAct = this;
+        initMC74environ(htmlAct);  // Setup environ, esp ctxTr
+
+        Intent it = getIntent();
+        ctxPath = it.getStringExtra("path");
+        if (ctxPath == null) ctxPath = "launcher";
+        layoutOid = it.getStringExtra("layoutOid");
+        setContentView(createView());
+    } // end of onCreate
+
+
+    protected void onStart() {
+        prt("HTMLact.onStart");
+        super.onStart();
+        htmlAct = this;  // curAct doesn't seem to get restored in onResume some times.
+
+    } // end of onStart
+
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        ctxPath = intent.getStringExtra("path");
+        if (ctxPath == null) ctxPath = "launcher";
+        layoutOid = intent.getStringExtra("layoutOid");
+        prt("HTMLact.onNewIntent: "+intent+", ctxPath: "+ctxPath+", layoutOid: "+layoutOid);
+    } // end of onNewIntent
+
+
+    protected void onResume() {
+        prt("HTMLact.onResume");
+        curAct = this;
+        super.onResume();
+
+        Tree wpCtxTr = (Tree)ctxTr.clone();
+        prt("WebPanel.onResume ctxPath: "+ctxPath+", layoutOid: "+ layoutOid);
+        String url = "http://localhost:1808/launcher";  // Default launcher URL
+        if (layoutOid != null) {
+            url = "http://localhost:1808/launcher/get/"+ layoutOid;
+        } else if (wpCtxTr.selectMulti(new Bytes(ctxPath), false)) {
+            url = wpCtxTr.value("URL");
+        }
+
+        prt("  url: "+url);
+        if (url != null && url.length() > 0) {
+            if (url.substring(0, 4).compareToIgnoreCase("WRT ") == 0) {
+                new WebAct.LoadHTML().execute(url);
+            } else {
+                webVw.loadUrl(url);
+            }
+        }
+        wpCtxTr.release();
+    } // end of onResume
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+    }
+
+    protected void onDestroy() {
+        prt("HTMLact.onDestroy");
+        htmlAct = null;
+        super.onDestroy();
+    }
+
+    public View createView() {
+        prt("HTMLact.createView: ");
+
+        webVw = new WebView(htmlAct.getApplicationContext());
+        webVw.setTag("HTMLactWv");
+        LinearLayout.LayoutParams lllp = new LinearLayout.LayoutParams(
+          ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
+        webVw.setLayoutParams(lllp);
+        View.OnClickListener ocl = new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                prt("HTMLact onclick");
+                htmlAct.finish();
+            }
+        };
+        webVw.setOnClickListener(ocl);
+        webVw.setInitialScale(150);
+        htmlAct.getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING);
+        ws = webVw.getSettings();
+        ws.setJavaScriptEnabled(true);
+        webVw.setWebChromeClient(wcc = new WebAct.WCC());
+        webVw.setWebViewClient(wvc = new WebAct.WVC());
+        webVw.addJavascriptInterface(new WebPanel.JSInterface(htmlAct.getApplicationContext()), "host");
+
+        //((ViewGroup) webVw.getParent()).setOnClickListener(ocl);
+        //prt(showViewTree(webVw.getRootView()));
+
+        String html = "<body>\n" + "  <center style='color:gray'>(Loading)</center>\n" + "</body>";
+        webVw.loadData(html, "text/html; charset=UTF-8", null);
+        prt("\nHTMLact returned from createView:\n" + showViewTree(webVw));
+        return webVw;
+    } // end of createView
+
+
+public static void cmdTimerSet(SSMSessCtx sctx) {
+  sctx.sendResp("cmdTimerSetresp");
+} // end of cmdTimerSet
+
+public static void prt(String str) {
+        System.out.println(str);
+    }
+} // end of HTMLact class
